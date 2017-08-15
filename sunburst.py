@@ -2,7 +2,7 @@
 each layer represents the letter at that index in the word"""
 
 from pyx import path, canvas, style, color, text
-from words_and_occurences import word_list
+from wordlist import word_list
 from colormap import COLOUR_MAPPING
 from math import sin, cos, pi
 

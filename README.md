@@ -1,3 +1,3 @@
 # sunburst
 
-![alt-text](sunburst/test1.png)
+![alt-text](test1.png)

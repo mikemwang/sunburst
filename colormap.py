@@ -3,7 +3,7 @@
 ALPHABET = "abcdefghijklmnopqrstuvwxyz"
 
 def create_color_map(ALPHABET):
-    incr = 1.0/50.0
+    incr = 1.0/28.0
     mapping = {}
     init = 0.95
     for letter in ALPHABET:

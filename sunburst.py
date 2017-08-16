@@ -5,10 +5,32 @@ from pyx import path, canvas, style, color, text
 from wordlist import word_list
 from colormap import COLOUR_MAPPING
 from math import sin, cos, pi
+from auxilary_classes import Canvases, Geometric_Properties
 
 # TODO make a class Sector_Constants that has the unchanging variables, then
 # make Sector inherit from Sector_Constants so there's no need to pass along
 # variables that never change
+
+class Sunburst(object):
+    """An object that describes the entire sunburst diagram, initializes global
+    settings"""
+
+    def __init__(self,
+                 data_source,
+                 max_recursion,
+                 shape_canvas,
+                 text_canvas,
+                 layer_thickness,
+                 letter_sector_thickness,
+                 end_sector_thickness):
+
+        self.data_source = data_source
+        self.max_recursion = max_recursion
+
+class Layer(object):
+    """An object to store layer properties (since each sector is only aware of
+    its vertical slice"""
+    pass
 
 class Sector(object):
     """A slice of the sunburst graph, should have a parent sector and children
@@ -20,14 +42,14 @@ class Sector(object):
                  max_level=None,
                  letter=None,
                  shape_canvas=None,
-                 text_canvas=None,
                  start_percent=0,
                  end_percent=None,
                  inner_radius=None,
                  layer_thickness=None,
                  arc_thickness=None,
                  parent_angle=None,
-                 parent_arc=None):
+                 parent_arc=None,
+                 text_pos=None):
 
         self.parent_list = parent_list  # the list the parent sector passes on
         self.level = level  # which level of the graph, to stop recursion
@@ -43,6 +65,7 @@ class Sector(object):
         self.arc_thickness = arc_thickness
         self.start_angle = self.start*parent_arc + parent_angle
         self.end_angle = self.end*parent_arc + parent_angle
+        self.text_pos = text_pos
 
     def dist_from_centroid(self, d_from_centroid):
         """
@@ -76,26 +99,29 @@ class Sector(object):
             return
 
         if not end:
-            # draw the arc
+            # create the arc segment
             segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
                                          self.end_angle),
                                 path.arcn(0, 0,
                                           self.arc_thickness+self.inner_r,
                                           self.end_angle, self.start_angle),
                                 path.closepath())
+            # render the arc segment onto the canvas
             self.shape_canvas.fill(segment,
                                    [color.gray(COLOUR_MAPPING[self.letter])])
 
             # write the letter
-            if (self.end_angle-self.start_angle) > (pi/20.0):
-                text_coord = self.dist_from_centroid(0.25*self.arc_thickness)
-                # -0.1 on the x coordinate in order to center the letter better
-                self.text_canvas.text(text_coord[0]-0.1, text_coord[1], self.letter,
-                                     [text.valign.middle])
-                # draw dot on corresponding section, for clarity
-                dot_coord = self.dist_from_centroid(0)
-                self.text_canvas.fill(path.circle(dot_coord[0], dot_coord[1], 0.01),
-                                                  [color.rgb.black])
+            #if (self.end_angle-self.start_angle) > (pi/400.0):
+            #    text_coord = self.dist_from_centroid(self.text_pos+
+            #                                         0.1*self.arc_thickness)
+            #    # -0.1 on the x coordinate in order to center the letter better
+            #    self.text_canvas.text(text_coord[0]-0.1, text_coord[1],
+            #                          self.letter, [text.valign.middle])
+            #    # draw dot on corresponding section, for clarity
+            #    dot_coord = self.dist_from_centroid(self.text_pos)
+            #    self.text_canvas.fill(path.circle(dot_coord[0], dot_coord[1],
+            #                                      0.01), [color.rgb.black])
+
         else:
             segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
                                          self.end_angle),
@@ -183,7 +209,9 @@ class Sector(object):
         sorted_freq = sorted(list(child_lists.keys()), reverse=True)
         total_freq = sum(child_lists.keys())
         cur_percent = 0
-        alternate = -1
+        cur_text_pos = -0.5*self.arc_thickness
+        if len(sorted_freq) is not 0:
+            text_pos_incr = float(self.arc_thickness)/float(len(sorted_freq))
         for freq in sorted_freq:
             percent = float(freq)/float(total_freq)
             child_sector = Sector(child_lists[freq]['words'],
@@ -191,7 +219,6 @@ class Sector(object):
                                   self.max_level,
                                   child_lists[freq]['letter'],
                                   self.shape_canvas,
-                                  self.text_canvas,
                                   cur_percent,
                                   cur_percent+percent,
                                   self.inner_r + self.layer_thickness,
@@ -199,10 +226,12 @@ class Sector(object):
                                   self.arc_thickness,
                                   self.start_angle,
                                   self.end_angle - self.start_angle,
+                                  cur_text_pos
                                   )
 
             child_sector.create_child_segments()
             cur_percent += percent
+            cur_text_pos += text_pos_incr
 
 
 if __name__ == "__main__":
@@ -215,7 +244,6 @@ if __name__ == "__main__":
                          max_level=17,
                          letter='_',
                          shape_canvas=shape_canvas,
-                         text_canvas=text_canvas,
                          start_percent=0,
                          end_percent=1,
                          inner_radius=0,
@@ -223,6 +251,7 @@ if __name__ == "__main__":
                          arc_thickness=3,
                          parent_angle=0,
                          parent_arc=360,
+                         text_pos=0
                          )
     test_sector.create_child_segments()
     shape_canvas.insert(text_canvas)

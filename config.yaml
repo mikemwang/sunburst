@@ -1,0 +1,12 @@
+# configuration info for sunburst diagram
+---
+layer_properties:
+        layer_width: 7
+        sector_width: 3
+        end_cap_width: 3
+
+data_properties:
+        source: 'wordlist'
+        max_recursion: 18
+        max_words: -1
+...

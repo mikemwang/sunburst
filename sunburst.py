@@ -1,135 +1,160 @@
 """python file to create a sunburst diagram using most used words in English,
 each layer represents the letter at that index in the word"""
 
-from pyx import path, canvas, style, color, text
-from wordlist import word_list
-from colormap import COLOUR_MAPPING
 from math import sin, cos, pi
-from auxilary_classes import Canvases, Geometric_Properties
+from pyx import path, canvas, style, color, text
+from colormap import COLOUR_MAPPING
+import yaml
 
-# TODO make a class Sector_Constants that has the unchanging variables, then
-# make Sector inherit from Sector_Constants so there's no need to pass along
-# variables that never change
 
 class Sunburst(object):
     """An object that describes the entire sunburst diagram, initializes global
     settings"""
 
     def __init__(self,
-                 data_source,
-                 max_recursion,
-                 shape_canvas,
-                 text_canvas,
-                 layer_thickness,
-                 letter_sector_thickness,
-                 end_sector_thickness):
+                 canvases,
+                 config_path):
 
-        self.data_source = data_source
-        self.max_recursion = max_recursion
+        self.shape_canvas = canvases[0]
+        self.text_canvas = canvases[1]
+        # data properties
+        self.config_path = config_path  # path to config file
+        self.config = None  # to be parsed later
+        self.data_attrs = None
+        self.layer_attrs = None
+        # stores text locations, so we can do the text spread later
+        self.text_info = {}
 
-class Layer(object):
-    """An object to store layer properties (since each sector is only aware of
-    its vertical slice"""
-    pass
+    def import_settings(self):
+        """import settings in the config file and assign them"""
+
+        # open the config file for parsing
+        with open(self.config_path, 'r') as f:
+            self.config = yaml.load(f)
+
+        self.data_attrs = self.config['data_properties']
+        self.layer_attrs = self.config['layer_properties']
+
+    def sanitize_word_list(self):
+        """clean up duplicate words (since the same word may be used as different
+        parts of speech) and lowercase everything"""
+        word_list = []
+        with open(self.config['data_properties']['source']) as f:
+            for string in f:
+                line = string.split(',')
+                word = line[0]
+                # strip the newline char
+                freq = int(line[1][:-2])
+                word_list.append((word, freq))
+
+        sanitized_list = []
+        for entry in word_list:
+            sanitized_entry = (entry[0].lower(), entry[1])
+            present = False
+            for item in sanitized_list:
+                if sanitized_entry[0] == item[0]:
+                    temp = item[1]
+                    sanitized_list.remove(item)
+                    sanitized_list.append((sanitized_entry[0],
+                                           sanitized_entry[1] + temp))
+                    present = True
+                    break
+            if not present:
+                sanitized_list.append(sanitized_entry)
+        return sanitized_list
+
+    def bounding_box(self, data_max):
+        """draw bounding box so the file is the right size and shape"""
+        box_length = 1.15*data_max*self.layer_attrs['layer_width']
+        self.shape_canvas.fill(path.rect(-box_length, -box_length,
+                                         2*box_length, 2*box_length),
+                               [color.rgb.white])
+
+    def begin(self):
+        """begin calculating the diagram"""
+        # get the settings from the config file
+        self.import_settings()
+        # clean up the word list
+        word_list = self.sanitize_word_list()
+        # find how big the bounding box needs to be
+        data_max = 0
+        for word in word_list:
+            if len(word[0]) > data_max:
+                data_max = len(word[0])
+        # draw the bounding box
+        self.bounding_box(data_max)
+        # instantiate the very first layer
+        origin = Sector(self, word_list)
+        # recursively draw all other layers
+        origin.create_child_segments()
+
 
 class Sector(object):
     """A slice of the sunburst graph, should have a parent sector and children
     sectors"""
 
+    # these defaults create the root sector
     def __init__(self,
-                 parent_list=None,
-                 level=None,
-                 max_level=None,
-                 letter=None,
-                 shape_canvas=None,
+                 sunburst,
+                 parent_list,
+                 level=0,
+                 letter='ORIGIN',
                  start_percent=0,
-                 end_percent=None,
-                 inner_radius=None,
-                 layer_thickness=None,
-                 arc_thickness=None,
-                 parent_angle=None,
-                 parent_arc=None,
-                 text_pos=None):
+                 end_percent=1,
+                 inner_radius=0,
+                 parent_angle=0,
+                 parent_arc=360):
 
+        # assigned by constructor
+        self.sunburst = sunburst
         self.parent_list = parent_list  # the list the parent sector passes on
-        self.level = level  # which level of the graph, to stop recursion
-        self.max_level = max_level
+        self.level = level  # keep track of which level of the graph, to stop recursion
         self.letter = letter  # what letter is it?
-        self.shape_canvas = shape_canvas
-        self.text_canvas = text_canvas
         self.start = start_percent  # start where on the parent sector
         self.end = end_percent  # end where on the parent sector
         # after truncating the parent sector letter
         self.inner_r = inner_radius
-        self.layer_thickness = layer_thickness
-        self.arc_thickness = arc_thickness
+
+        # calculated using constructor
         self.start_angle = self.start*parent_arc + parent_angle
         self.end_angle = self.end*parent_arc + parent_angle
-        self.text_pos = text_pos
 
-    def dist_from_centroid(self, d_from_centroid):
-        """
-        a method to calculate points along the ceterline
-
-        args:
-             d_from_centroid: distance from the centroid, positive = outward
-
-        returns: tuple of the point's (x,y)
-        """
-        # find the angle in degrees
-        centroid_angle = 0.5*(self.start_angle+self.end_angle)*pi/180.0
-        # the radius of the centroid
-        centroid_rad = self.inner_r+0.5*self.arc_thickness
-
-        new_x = (centroid_rad + d_from_centroid)*cos(centroid_angle)
-        new_y = (centroid_rad + d_from_centroid)*sin(centroid_angle)
-
-        return (new_x, new_y)
+        # assigned from sunburst class
+        self.max_level = self.sunburst.data_attrs['max_recursion']
+        self.shape_canvas = self.sunburst.shape_canvas
+        self.layer_width = self.sunburst.layer_attrs['layer_width']
+        self.sector_width = self.sunburst.layer_attrs['sector_width']
+        self.end_sector_width = self.sunburst.layer_attrs['end_cap_width']
 
     def display(self):
         """method to display the sector"""
 
         # draw the segment
-        end = False
-        if self.letter == '':
-            end = True
-
         if self.level == 0:
             # don't draw anything in the center
             return
 
-        if not end:
+        if self.letter is '':
+            segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
+                                         self.end_angle),
+                                path.arcn(0, 0,
+                                          self.end_sector_width+self.inner_r,
+                                          self.end_angle, self.start_angle),
+                                path.closepath())
+            self.shape_canvas.fill(segment, [color.rgb.red])
+        else:
             # create the arc segment
             segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
                                          self.end_angle),
                                 path.arcn(0, 0,
-                                          self.arc_thickness+self.inner_r,
+                                          self.sector_width+self.inner_r,
                                           self.end_angle, self.start_angle),
                                 path.closepath())
             # render the arc segment onto the canvas
             self.shape_canvas.fill(segment,
                                    [color.gray(COLOUR_MAPPING[self.letter])])
 
-            # write the letter
-            #if (self.end_angle-self.start_angle) > (pi/400.0):
-            #    text_coord = self.dist_from_centroid(self.text_pos+
-            #                                         0.1*self.arc_thickness)
-            #    # -0.1 on the x coordinate in order to center the letter better
-            #    self.text_canvas.text(text_coord[0]-0.1, text_coord[1],
-            #                          self.letter, [text.valign.middle])
-            #    # draw dot on corresponding section, for clarity
-            #    dot_coord = self.dist_from_centroid(self.text_pos)
-            #    self.text_canvas.fill(path.circle(dot_coord[0], dot_coord[1],
-            #                                      0.01), [color.rgb.black])
-
-        else:
-            segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
-                                         self.end_angle),
-                                path.arcn(0, 0,
-                                          self.arc_thickness+self.inner_r,
-                                          self.end_angle, self.start_angle),
-                                path.closepath())
-            self.shape_canvas.fill(segment, [color.rgb.red])
+            centroid_angle = 0.5*(self.end_angle+self.start_angle)
 
     def create_child_segment_lists(self):
         """a method to create child segments"""
@@ -207,52 +232,32 @@ class Sector(object):
         child_lists = self.create_child_segment_lists()
 
         sorted_freq = sorted(list(child_lists.keys()), reverse=True)
+
         total_freq = sum(child_lists.keys())
         cur_percent = 0
-        cur_text_pos = -0.5*self.arc_thickness
-        if len(sorted_freq) is not 0:
-            text_pos_incr = float(self.arc_thickness)/float(len(sorted_freq))
         for freq in sorted_freq:
             percent = float(freq)/float(total_freq)
-            child_sector = Sector(child_lists[freq]['words'],
+            child_sector = Sector(self.sunburst,
+                                  child_lists[freq]['words'],
                                   self.level + 1,
-                                  self.max_level,
                                   child_lists[freq]['letter'],
-                                  self.shape_canvas,
                                   cur_percent,
                                   cur_percent+percent,
-                                  self.inner_r + self.layer_thickness,
-                                  self.layer_thickness,
-                                  self.arc_thickness,
+                                  self.inner_r + self.layer_width,
                                   self.start_angle,
                                   self.end_angle - self.start_angle,
-                                  cur_text_pos
                                   )
 
             child_sector.create_child_segments()
             cur_percent += percent
-            cur_text_pos += text_pos_incr
 
 
 if __name__ == "__main__":
     shape_canvas = canvas.canvas()
     text_canvas = canvas.canvas()
+    canvases = (shape_canvas, text_canvas)
     # create bounding box
-    shape_canvas.fill(path.rect(-80,-80,160,160), [color.gray(1)])
-    test_sector = Sector(word_list,
-                         level=0,
-                         max_level=17,
-                         letter='_',
-                         shape_canvas=shape_canvas,
-                         start_percent=0,
-                         end_percent=1,
-                         inner_radius=0,
-                         layer_thickness=7,
-                         arc_thickness=3,
-                         parent_angle=0,
-                         parent_arc=360,
-                         text_pos=0
-                         )
-    test_sector.create_child_segments()
+    sunburst = Sunburst(canvases, 'config.yaml')
+    sunburst.begin()
     shape_canvas.insert(text_canvas)
-    shape_canvas.writePDFfile('test1')
+    shape_canvas.writePDFfile('test2')

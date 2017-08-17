@@ -260,4 +260,4 @@ if __name__ == "__main__":
     sunburst = Sunburst(canvases, 'config.yaml')
     sunburst.begin()
     shape_canvas.insert(text_canvas)
-    shape_canvas.writePDFfile('test2')
+    shape_canvas.writePDFfile('test1')

@@ -2,12 +2,13 @@
 each layer represents the letter at that index in the word"""
 
 from math import sin, cos, pi
-from pyx import path, canvas, style, color, text, deco, trafo
+from pyx import path, canvas, style, color, text, trafo
 from colormap import COLOUR_MAPPING
 import yaml
+from code_parser import CodeParser
 
-MAX = 75
-NAME = 'test_curves_'+str(MAX)
+MAX = 25
+NAME = 'test_self'+str(MAX)
 
 
 class TextLayer(object):
@@ -42,11 +43,11 @@ class TextLayer(object):
                 if cent_angle > pi/2 and cent_angle <(3*pi/2):
                     word_settings = trafo.rotate(180+cent_angle*180/pi)
 
-                if len(letter) > 1:
-                    disp = ' ['+str(percent)+']'
-                    letter += disp
+                #if len(letter) > 1:
+                #    disp = ' ['+str(percent)+']'
+                #    letter += disp
 
-                self.text_canvas.text(cent_x, cent_y, r''+letter,
+                self.text_canvas.text(cent_x, cent_y, r' '+letter,
                         [text.halign.center, text.valign.middle,
                             word_settings])
 
@@ -175,10 +176,13 @@ class Sunburst(object):
         # clean up the word list
         word_list = self.sanitize_word_list()
         # find how big the bounding box needs to be
+        code_parse = CodeParser('sunburst.py')
+        word_list = code_parse.parse()
         data_max = 0
         for word in word_list:
             if len(word[0]) > data_max:
                 data_max = len(word[0])
+
         # draw the bounding box
         self.bounding_box(data_max)
         # instantiate the very first layer

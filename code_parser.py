@@ -74,7 +74,13 @@ class CodeParser(object):
         for line in source:
             save_line = True
             if line[0] == '#':
+                # don't add if it's a comment, continue
                 continue
+            if '#' in line:
+                # don't add the latter half if line contains comment
+                line = line.split('#')[0]
+                continue
+            # logic to check for docstrings
             if len(line) > 2:
                 if line[0:3] == '"""' and not in_docstring:
                     in_docstring = True
@@ -85,11 +91,8 @@ class CodeParser(object):
                 elif line[-3:] == '"""' and in_docstring:
                     in_docstring = False
                     save_line = False
-
             if save_line and not in_docstring:
                 sanitized.append(line)
-                print(line)
-
         return sanitized
 
     def lowercase(self, source):
@@ -116,6 +119,3 @@ class CodeParser(object):
                 temp_line = temp_line[1:]
         return sanitized
 
-test = CodeParser('test.py')
-results = test.parse()
-print(results)

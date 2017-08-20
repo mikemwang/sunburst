@@ -7,14 +7,10 @@ from colormap import COLOUR_MAPPING
 import yaml
 from code_parser import CodeParser
 
-MAX = 25
-NAME = 'test_self'+str(MAX)
-
-
 class TextLayer(object):
     """class to create all the text and format it appropraitely"""
 
-    def __init__(self, text_canvas, radial_offset, angular_spacing):
+    def __init__(self, text_canvas, angular_spacing):
         """
         text_canvas: the canvas object to draw the text
 
@@ -23,84 +19,38 @@ class TextLayer(object):
         angular spacing: minimum angular distance between letters, degrees?
         """
         self.text_canvas = text_canvas
-        self.radial_offset = radial_offset
         self.angular_spacing = angular_spacing
         self.sector_info = {}  # info from the sector
 
     def begin(self):
         """draw the text!!"""
-        text_info = self.apply_angular_offset()
-        for layer in text_info:
-            cent_rad = text_info[layer]['radius']
-            for angle in text_info[layer]['letters']:
-                cent_angle = angle*pi/180.0
-                cent_x = cent_rad*cos(cent_angle)
-                cent_y = cent_rad*sin(cent_angle)
 
-                letter = text_info[layer]['letters'][angle][0]
-                percent = text_info[layer]['letters'][angle][2]
-                word_settings = trafo.rotate(cent_angle*180/pi)
-                if cent_angle > pi/2 and cent_angle <(3*pi/2):
-                    word_settings = trafo.rotate(180+cent_angle*180/pi)
+        for layer in self.sector_info:
+            radius = self.sector_info[layer]['radius']
 
-                #if len(letter) > 1:
-                #    disp = ' ['+str(percent)+']'
-                #    letter += disp
+            for angle in self.sector_info[layer]['letters']:
+                centroid_angle = angle*pi/180.0
+                centroid_x = radius*cos(centroid_angle)
+                centroid_y = radius*sin(centroid_angle)
+                letter = self.sector_info[layer]['letters'][angle]
+                transform = trafo.rotate(centroid_angle*180/pi)
 
-                self.text_canvas.text(cent_x, cent_y, r' '+letter,
+                if centroid_angle > pi/2 and centroid_angle <(3*pi/2):
+                    transform = trafo.rotate(180+centroid_angle*180/pi)
+
+                self.text_canvas.text(centroid_x, centroid_y, r' '+letter,
                         [text.halign.center, text.valign.middle,
-                            word_settings])
+                            transform])
 
-    def update(self, layer, letter, centroid, percent):
+    def update(self, layer, letter, centroid):
         """sectors will call this to update the text info"""
         # centroid is a tuple of (angle, radius)
         if layer not in self.sector_info.keys():
             self.sector_info[layer] = {'radius': centroid[1],
                                        'letters':
-                                       {centroid[0]: (letter, percent)}}
+                                       {centroid[0]: letter}}
         else:
-            self.sector_info[layer]['letters'][centroid[0]] = (letter, percent)
-
-    def apply_angular_offset(self):
-        """apply the angular offset
-        {layer:
-            letters:{
-                a:(centroid_angle, text_angle)
-                b:(centroid_angle, text_angle)
-            },
-            centroid_radius: some_number
-        }
-        """
-        text_info = {}
-        for layer in self.sector_info:
-            ordered_angles = sorted(list(self.sector_info[layer]['letters'].keys()))
-            ordered_new_angles = []
-            text_info[layer] = {'radius': self.sector_info[layer]['radius'],
-                                     'letters': {}}
-            for index in range(len(ordered_angles)):
-                letter = self.sector_info[layer]['letters'][ordered_angles[index]][0]
-                percent = self.sector_info[layer]['letters'][ordered_angles[index]][1]
-                cur_angle = ordered_angles[index]
-                if index == 0:
-                    text_info[layer]['letters'][cur_angle] = (letter,
-                            cur_angle, percent)
-                    ordered_new_angles.append(cur_angle)
-                else:
-                    target_angle = ordered_new_angles[index-1]+self.angular_spacing
-                    if cur_angle < target_angle:
-                        if target_angle - cur_angle < (pi/100.0):
-                            text_info[layer]['letters'][cur_angle] = (letter,
-                                                                   target_angle,
-                                                                   percent)
-                            ordered_new_angles.append(target_angle)
-                        else:
-                            ordered_new_angles.append(cur_angle)
-                    else:
-                        text_info[layer]['letters'][cur_angle] = (letter,
-                                                               cur_angle,
-                                                               percent)
-                        ordered_new_angles.append(cur_angle)
-        return text_info
+            self.sector_info[layer]['letters'][centroid[0]] = letter
 
 
 class Sunburst(object):
@@ -158,11 +108,9 @@ class Sunburst(object):
             if not present:
                 sanitized_list.append(sanitized_entry)
 
-            if len(sanitized_list) > MAX:
-                break
         return sanitized_list
 
-    def bounding_box(self, data_max):
+    def extents(self, data_max):
         """draw bounding box so the file is the right size and shape"""
         box_length = (data_max+2)*self.layer_attrs['layer_width']
         self.shape_canvas.fill(path.rect(-box_length, -box_length,
@@ -184,7 +132,7 @@ class Sunburst(object):
                 data_max = len(word[0])
 
         # draw the bounding box
-        self.bounding_box(data_max)
+        self.extents(data_max)
         # instantiate the very first layer
         origin = Sector(self, word_list)
         # recursively draw all other layers
@@ -300,13 +248,11 @@ class Sector(object):
         if self.letter == '':
             self.sunburst.text_object.update(self.level, self.path[6:],
                                              (self.centroid_angle*180.0/pi,
-                                              self.inner_r+0.5*self.sector_width),
-                                             percent)
+                                              self.inner_r+0.5*self.sector_width))
         else:
             self.sunburst.text_object.update(self.level, self.letter,
                                              (self.centroid_angle*180.0/pi,
-                                              self.inner_r+0.5*self.sector_width),
-                                             percent)
+                                              self.inner_r+0.5*self.sector_width))
 
         if len(self.parent_list) == 1:
             remaining_letters = self.parent_list[0][0]
@@ -330,11 +276,12 @@ class Sector(object):
         # draw the bezier
         x0 = self.inner_r*cos(self.centroid_angle)
         y0 = self.inner_r*sin(self.centroid_angle)
-        r1 =  0.5*(self.parent_outer_radius+self.inner_r)
+        r1 = self.parent_outer_radius
         x1 = r1*cos(self.centroid_angle)
         y1 = r1*sin(self.centroid_angle)
-        x2 = r1*cos(self.parent_centroid_angle)
-        y2 = r1*sin(self.parent_centroid_angle)
+        r2 = self.inner_r
+        x2 = r2*cos(self.parent_centroid_angle)
+        y2 = r2*sin(self.parent_centroid_angle)
         x3 = self.parent_outer_radius*cos(self.parent_centroid_angle)
         y3 = self.parent_outer_radius*sin(self.parent_centroid_angle)
 
@@ -447,9 +394,9 @@ if __name__ == "__main__":
     shape_canvas = canvas.canvas()
     text_canvas = canvas.canvas()
     canvases = (shape_canvas, text_canvas)
-    text_object = TextLayer(text_canvas, 0.75, 0.25)
+    text_object = TextLayer(text_canvas, 0.25)
     # create bounding box
     sunburst = Sunburst(canvases, 'config.yaml', text_object)
     sunburst.begin()
     shape_canvas.insert(text_canvas)
-    shape_canvas.writePDFfile(NAME)
+    shape_canvas.writePDFfile('test_meta_170819')

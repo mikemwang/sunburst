@@ -3,14 +3,14 @@ each layer represents the letter at that index in the word"""
 
 from math import sin, cos, pi
 from pyx import path, canvas, style, color, text, trafo
-from colormap import COLOUR_MAPPING
+from colormap import COLOR_MAPPING, BEZIER_MAPPING
 import yaml
 from code_parser import CodeParser
 
 class TextLayer(object):
     """class to create all the text and format it appropraitely"""
 
-    def __init__(self, text_canvas, angular_spacing):
+    def __init__(self, canvas):
         """
         text_canvas: the canvas object to draw the text
 
@@ -18,40 +18,38 @@ class TextLayer(object):
 
         angular spacing: minimum angular distance between letters, degrees?
         """
-        self.text_canvas = text_canvas
-        self.angular_spacing = angular_spacing
-        self.sector_info = {}  # info from the sector
+        self.canvas = canvas
+        self.sectors = {}  # info from the sector
 
     def begin(self):
         """draw the text!!"""
 
-        for layer in self.sector_info:
-            radius = self.sector_info[layer]['radius']
+        for layer in self.sectors:
+            radius = self.sectors[layer]['radius']
 
-            for angle in self.sector_info[layer]['letters']:
-                centroid_angle = angle*pi/180.0
-                centroid_x = radius*cos(centroid_angle)
-                centroid_y = radius*sin(centroid_angle)
-                letter = self.sector_info[layer]['letters'][angle]
-                transform = trafo.rotate(centroid_angle*180/pi)
+            for angle in self.sectors[layer]['letters']:
+                cent_angle = angle*pi/180.0
+                centroid_x = radius*cos(cent_angle)
+                centroid_y = radius*sin(cent_angle)
+                letter = self.sectors[layer]['letters'][angle]
+                transform = trafo.rotate(cent_angle*180/pi)
 
-                if centroid_angle > pi/2 and centroid_angle <(3*pi/2):
-                    transform = trafo.rotate(180+centroid_angle*180/pi)
+                if cent_angle > pi/2 and cent_angle <(3*pi/2):
+                    transform = trafo.rotate(180+cent_angle*180/pi)
 
-                self.text_canvas.text(centroid_x, centroid_y, r' '+letter,
+                self.canvas.text(centroid_x, centroid_y, r' '+letter,
                         [text.halign.center, text.valign.middle,
                             transform])
 
     def update(self, layer, letter, centroid):
         """sectors will call this to update the text info"""
         # centroid is a tuple of (angle, radius)
-        if layer not in self.sector_info.keys():
-            self.sector_info[layer] = {'radius': centroid[1],
+        if layer not in self.sectors.keys():
+            self.sectors[layer] = {'radius': centroid[1],
                                        'letters':
                                        {centroid[0]: letter}}
         else:
-            self.sector_info[layer]['letters'][centroid[0]] = letter
-
+            self.sectors[layer]['letters'][centroid[0]] = letter
 
 class Sunburst(object):
     """An object that describes the entire sunburst diagram, initializes global
@@ -59,60 +57,30 @@ class Sunburst(object):
 
     def __init__(self,
                  canvases,
-                 config_path,
+                 config,
                  text_object):
 
         self.shape_canvas = canvases[0]
         self.text_canvas = canvases[1]
         # data properties
-        self.config_path = config_path  # path to config file
+        self.config = config  # path to config file
         self.text_object = text_object
-        self.config = None  # to be parsed later
-        self.data_attrs = None
-        self.layer_attrs = None
+        self.settings = None  # to be parsed later
+        self.data = None  # from the settings file
+        self.layer = None  # from the settings file
 
     def import_settings(self):
         """import settings in the config file and assign them"""
 
         # open the config file for parsing
-        with open(self.config_path, 'r') as f:
-            self.config = yaml.load(f)
+        self.settings = yaml.load(open(self.config, 'r'))
+        self.data = self.settings['data']
+        self.layer = self.settings['layer']
 
-        self.data_attrs = self.config['data_properties']
-        self.layer_attrs = self.config['layer_properties']
-
-    def sanitize_word_list(self):
-        """clean up duplicate words (since the same word may be used as different
-        parts of speech) and lowercase everything"""
-        word_list = []
-        with open(self.config['data_properties']['source']) as f:
-            for string in f:
-                line = string.split(',')
-                word = line[0]
-                # strip the newline char
-                freq = int(line[1][:-2])
-                word_list.append((word, freq))
-
-        sanitized_list = []
-        for entry in word_list:
-            sanitized_entry = (entry[0].lower(), entry[1])
-            present = False
-            for item in sanitized_list:
-                if sanitized_entry[0] == item[0]:
-                    temp = item[1]
-                    sanitized_list.remove(item)
-                    sanitized_list.append((sanitized_entry[0],
-                                           sanitized_entry[1] + temp))
-                    present = True
-                    break
-            if not present:
-                sanitized_list.append(sanitized_entry)
-
-        return sanitized_list
-
-    def extents(self, data_max):
+    def extents(self, layers):
         """draw bounding box so the file is the right size and shape"""
-        box_length = (data_max+2)*self.layer_attrs['layer_width']
+        # +2 for some boarder padding
+        box_length = (layers+1.25)*self.layer['layer_width']
         self.shape_canvas.fill(path.rect(-box_length, -box_length,
                                          2*box_length, 2*box_length),
                                [color.rgb.white])
@@ -121,20 +89,19 @@ class Sunburst(object):
         """begin calculating the diagram"""
         # get the settings from the config file
         self.import_settings()
-        # clean up the word list
-        word_list = self.sanitize_word_list()
-        # find how big the bounding box needs to be
+        words = None
         code_parse = CodeParser('sunburst.py')
-        word_list = code_parse.parse()
-        data_max = 0
-        for word in word_list:
-            if len(word[0]) > data_max:
-                data_max = len(word[0])
+        words = code_parse.parse()
+        # find how big the bounding box needs to be
+        max_len = 0
+        for word in words:
+            if len(word) > max_len:
+                max_len = len(word)
 
         # draw the bounding box
-        self.extents(data_max)
+        self.extents(max_len)
         # instantiate the very first layer
-        origin = Sector(self, word_list)
+        origin = Sector(self, words)
         # recursively draw all other layers
         origin.create_child_segments()
         self.text_object.begin()
@@ -152,12 +119,11 @@ class Sector(object):
                  letter='ORIGIN',
                  start_percent=0,
                  end_percent=1,
-                 inner_radius=0,
+                 inner_r=0,
                  parent_angle=0,
                  parent_arc=360,
                  parent_centroid_angle=0,
                  parent_outer_radius=0,
-                 parent_color=None,
                  path=''):
 
         # assigned by constructor
@@ -168,7 +134,7 @@ class Sector(object):
         self.start = start_percent  # start where on the parent sector
         self.end = end_percent  # end where on the parent sector
         # after truncating the parent sector letter
-        self.inner_r = inner_radius
+        self.inner_r = inner_r
         self.parent_centroid_angle = parent_centroid_angle
         self.parent_outer_radius = parent_outer_radius
 
@@ -177,24 +143,16 @@ class Sector(object):
         self.end_angle = self.end*parent_arc + parent_angle
 
         # assigned from sunburst class
-        self.max_level = self.sunburst.data_attrs['max_recursion']
+        self.max_level = self.sunburst.data['max_recursion']
         self.shape_canvas = self.sunburst.shape_canvas
-        self.layer_width = self.sunburst.layer_attrs['layer_width']
-        self.sector_width = self.sunburst.layer_attrs['sector_width']
-        self.end_sector_width = self.sunburst.layer_attrs['end_cap_width']
+        self.layer_width = self.sunburst.layer['layer_width']
+        self.sector_width = self.sunburst.layer['sector_width']
 
         self.centroid_angle = 0.5*(self.end_angle+self.start_angle)*pi/180.0
-        self.parent_color = parent_color
-
-        self.sector_color = None
         self.path = path
 
-        if self.level == 0:
-            return
-        if self.letter == '':
-            self.sector_color = color.rgb.red
-        else:
-            self.sector_color = color.gray(COLOUR_MAPPING[self.letter])
+        if self.level > 0:
+            self.sector_color = COLOR_MAPPING[self.letter]
 
     def draw_sector(self, end):
         """draw the sector"""
@@ -204,7 +162,7 @@ class Sector(object):
             segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
                                          self.end_angle),
                                 path.arcn(0, 0,
-                                          self.end_sector_width+self.inner_r,
+                                          self.sector_width+self.inner_r,
                                           self.end_angle, self.start_angle),
                                 path.closepath())
             self.shape_canvas.fill(segment, [self.sector_color])
@@ -243,8 +201,6 @@ class Sector(object):
             # don't draw anything in the center
             return
 
-        percent = int(10000*(self.end_angle-self.start_angle)/360.0)/100.0
-
         if self.letter == '':
             self.sunburst.text_object.update(self.level, self.path[6:],
                                              (self.centroid_angle*180.0/pi,
@@ -254,20 +210,6 @@ class Sector(object):
                                              (self.centroid_angle*180.0/pi,
                                               self.inner_r+0.5*self.sector_width))
 
-        if len(self.parent_list) == 1:
-            remaining_letters = self.parent_list[0][0]
-            if remaining_letters == '':
-                pass
-            else:
-                for letter in remaining_letters:
-                    pass
-
-        bezier_color = None
-        if self.level == 1:
-            bezier_color = self.sector_color
-        else:
-            bezier_color = self.parent_color
-
         if self.letter == '':
             self.draw_sector(True)
         else:
@@ -276,83 +218,100 @@ class Sector(object):
         # draw the bezier
         x0 = self.inner_r*cos(self.centroid_angle)
         y0 = self.inner_r*sin(self.centroid_angle)
+
         r1 = self.parent_outer_radius
         x1 = r1*cos(self.centroid_angle)
         y1 = r1*sin(self.centroid_angle)
+
         r2 = self.inner_r
         x2 = r2*cos(self.parent_centroid_angle)
         y2 = r2*sin(self.parent_centroid_angle)
+
         x3 = self.parent_outer_radius*cos(self.parent_centroid_angle)
         y3 = self.parent_outer_radius*sin(self.parent_centroid_angle)
 
-        bezier_color = self.sector_color
+        bezier_color = BEZIER_MAPPING[self.letter]
 
         self.shape_canvas.stroke(path.curve(x0,y0,x1,y1,x2,y2,x3,y3),
                                  [style.linewidth(0.005), bezier_color])
 
     def create_child_segment_lists(self):
-        """a method to create child segments"""
-        # TODO: not very elegent but it gets the job done
+        """a method to create child segment lists. returns in the following
+        format:
 
+        {letter_frequency:
+            {'letter': x,
+             'words' : [list of remaining word segments]},
+         letter_frequency:
+            {'letter': x,
+             'words' : [list of remaining word segments]},
+        }
+
+
+        """
         child_sector_lists = {}
+        sorted_child_lists = []
 
-        while len(self.parent_list) > 0:
-
-            for word_tuple in self.parent_list:
-                if len(word_tuple[0]) == 0:
-                    child_sector_lists[word_tuple[1]] = {'letter': '',
-                                                         'words': []}
-                    if len(self.parent_list) == 1:
-                        return child_sector_lists
+        for word in self.parent_list:
+            # if the first letter of the word - word[0][0] is not already a key
+            # in the dict, start a new key
+            freq = self.parent_list[word]
+            if not word:
+                # if word is an empty string, continue
+                child_sector_lists[word] = {'freq': freq,
+                                              'words': {}}
+                continue
+            letter = word[0]
+            if letter not in child_sector_lists.keys():
+                # word[1] is the frequency, word[0][1:] removes the first
+                # letter
+                if len(word) == 1:
+                    # if removing the first character yields an empty string:
+                    child_sector_lists[letter] = {'freq': freq,
+                                                  'words': {'': freq}}
                     continue
-                cur_word = word_tuple[0]
-                # remove first letter since uneeded for further parsing
-                # group words by first letter
-                if len(cur_word) > 1:
-                    child_list = [(word_tuple[0][1:], word_tuple[1])]
-                else:
-                    child_list = [('', word_tuple[1])]
-                letter_freq = word_tuple[1]
-                cur_letter = cur_word[0]
-                for other_word_tuple in self.parent_list:
-                    check_word = other_word_tuple[0]
-                    if len(check_word) == 0:
-                        continue
-                    if check_word != cur_word:
-                        if check_word[0] == cur_word[0]:
-                            letter_freq += other_word_tuple[1]
-                            if len(check_word) > 1:
-                                child_list.append((check_word[1:],
-                                                   other_word_tuple[1]))
-                            else:
-                                child_list.append(('', other_word_tuple[1]))
 
-                child_sector_lists[letter_freq] = {'letter': cur_letter,
-                                                   'words': child_list}
+                child_sector_lists[letter] = {'freq': freq,
+                                              'words': {word[1:]: freq}}
+            else:
+                # increment frequency accordingly
+                child_sector_lists[letter]['freq'] += freq
+                # if removing the first character yields an empty string:
+                if len(word) == 1:
+                    # add tuple to that list of words, removing first letter
+                    child_sector_lists[letter]['words'][''] = freq
+                    continue
+                child_sector_lists[letter]['words'][word[1:]] = freq
 
-                # logic to remove all the words we've already found
-                while True:
-                    list_clear = True
-                    for item in self.parent_list:
-                        if len(item[0]) == 0:
-                            continue
-                        elif item[0][0] == cur_letter:
-                            self.parent_list.remove(item)
+        # commence sorting by frequncy
+        # we do this since having the frequency as the key in the above
+        # dict will lead to lost data if 2 letters have the same freq
 
-                    # must do this to ensure all words beginning with cur_letter
-                    # have been removed, since if consecutive words start with
-                    # cur_letter the second one gets skipped in the above for loop
-                    for item in self.parent_list:
-                        if len(item[0]) == 0:
-                            continue
-                        if item[0][0] == cur_letter:
-                            list_clear = False
-                            break
+        # first populate a list of all letter frequencies
+        freqlist = []
 
-                    if list_clear:
-                        break
+        for letter in child_sector_lists:
+            freqlist.append(child_sector_lists[letter]['freq'])
+        # then sort this list in descending order
+        freqlist.sort(reverse=True)
 
-        return child_sector_lists
+        # now add the dicts into sorted_child_lists in the right order
+        if self.level == 0:
+            for entry in child_sector_lists:
+                print(entry)
+
+        for freq in freqlist:
+            for letter in child_sector_lists:
+                if child_sector_lists[letter]['freq'] == freq:
+                    sorted_child_lists.append({'letter': letter,
+                                               'freq': freq,
+                                               'words': child_sector_lists[
+                                                   letter]['words']})
+                    child_sector_lists.pop(letter)
+                    break
+        return sorted_child_lists
+        # this will look like:
+        # [{'letter': a, 'freq': 1234, 'words': {'ble': 123, 'ss': 432}}, ...]
 
     def create_child_segments(self):
         """initialize the child sector objects"""
@@ -363,18 +322,22 @@ class Sector(object):
             return
 
         self.display()
+        if self.letter == '':
+            return
+
         child_lists = self.create_child_segment_lists()
 
-        sorted_freq = sorted(list(child_lists.keys()), reverse=True)
+        total_freq = 0
+        for child in child_lists:
+            total_freq += child['freq']
 
-        total_freq = sum(child_lists.keys())
         cur_percent = 0
-        for freq in sorted_freq:
-            percent = float(freq)/float(total_freq)
+        for child in child_lists:
+            percent = float(child['freq'])/float(total_freq)
             child_sector = Sector(self.sunburst,
-                                  child_lists[freq]['words'],
+                                  child['words'],
                                   self.level + 1,
-                                  child_lists[freq]['letter'],
+                                  child['letter'],
                                   cur_percent,
                                   cur_percent+percent,
                                   self.inner_r + self.layer_width,
@@ -382,7 +345,6 @@ class Sector(object):
                                   self.end_angle - self.start_angle,
                                   self.centroid_angle,
                                   self.inner_r+self.sector_width,
-                                  self.sector_color,
                                   self.path + self.letter
                                   )
 
@@ -394,7 +356,7 @@ if __name__ == "__main__":
     shape_canvas = canvas.canvas()
     text_canvas = canvas.canvas()
     canvases = (shape_canvas, text_canvas)
-    text_object = TextLayer(text_canvas, 0.25)
+    text_object = TextLayer(text_canvas)
     # create bounding box
     sunburst = Sunburst(canvases, 'config.yaml', text_object)
     sunburst.begin()

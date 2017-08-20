@@ -21,13 +21,12 @@ class CodeParser(object):
         data = self.remove_comments(data)
         data = self.lowercase(data)
         data = self.split_strings(data)
+        data = self.remove_underscores(data)
         clean_data = self.format(data)
         return clean_data
 
     def format(self, clean_data):
         freq_dict = {}
-        flipped = []
-        freq_list = []
 
         for entry in clean_data:
             if entry not in freq_dict.keys():
@@ -35,14 +34,7 @@ class CodeParser(object):
                 continue
             freq_dict[entry] += 1
 
-        for entry in freq_dict:
-            flipped.append({freq_dict[entry]:entry})
-
-        for entry in flipped:
-            for key in entry:
-                freq_list.append((entry[key], key))
-
-        return freq_list
+        return freq_dict
 
     def remove_indents_and_newline(self, source):
         """take in the raw lines read in from the source file, strip out
@@ -118,4 +110,16 @@ class CodeParser(object):
                     cur_word = ''
                 temp_line = temp_line[1:]
         return sanitized
+
+    def remove_underscores(self, source):
+        sanitized = []
+        for line in source:
+            temp = []
+            temp = line.split('_')
+            line = ''
+            for item in temp:
+                line += item
+            sanitized.append(line)
+        return sanitized
+
 

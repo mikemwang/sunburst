@@ -1,7 +1,7 @@
 # test inline comment
 
 ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
-NUMBERS = '123456789'
+NUMBERS = '0123456789'
 
 class CodeParser(object):
     """ a class that stores the logical paths of a program"""
@@ -67,6 +67,10 @@ class CodeParser(object):
             save_line = True
             if line[0] == '#':
                 # don't add if it's a comment, continue
+                continue
+            if "#'" in line:
+                print(line)
+                # these lines are flagged to be ignored
                 continue
             if '#' in line:
                 # don't add the latter half if line contains comment

@@ -1,5 +1,7 @@
 # configuration info for sunburst diagram
 ---
+output:
+        name: 'test'
 layer:
         layer_width: 7
         sector_width: 3

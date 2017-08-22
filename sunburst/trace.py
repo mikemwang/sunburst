@@ -33,7 +33,6 @@ class Trace(object):
                 lineno = frame.f_lineno
                 line = linecache.getline(filename, lineno)
                 self.lines.append(line)
-                print(line)
 
     def trace(self, frame, event, arg):
         """a callback to trigger line tracing for the appropriate functions"""

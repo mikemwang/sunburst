@@ -12,7 +12,7 @@ def main():
     # set up the line tracing function
     tracer = sunburst.Trace(os.path.dirname(os.path.abspath(sunburst.__file__)),
                             sunburst.generate_diagrams, sunburst.stop_trace)
-    #sys.settrace(tracer.trace)
+    sys.settrace(tracer.trace)
     # where is the sunburst directory?
     path = os.path.dirname(os.path.abspath(sunburst.__file__))
     # instantiate canvases
@@ -21,7 +21,8 @@ def main():
     # read in settings
     settings = yaml.load(open('config.yaml', 'r'))
     # list of diagrams to create
-    data = [('test', (0, 0)), ('test2', (180, 0))]
+    data = [('test', (0, 0), ('raw',)),
+            ('test2', (180, 0), ('trace', tracer.lines))]
     sunburst.generate_diagrams(data, shape_canvas, text_canvas, settings,
                                path)
     sunburst.output(settings['output']['name'], shape_canvas, text_canvas)

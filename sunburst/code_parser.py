@@ -36,6 +36,17 @@ class CodeParser(object):
                     clean_data[entry] = data[entry]
         return clean_data
 
+    def parse_trace(self, trace_source):
+        data = self.remove_indents_and_newline(trace_source)
+        data = self.remove_comments(data)
+        data = self.lowercase(data)
+        data = self.split_strings(data)
+        data = self.remove_underscores(data)
+        clean_data = self.format(data)
+        return clean_data
+
+
+
     def format(self, clean_data):
         freq_dict = {}
 

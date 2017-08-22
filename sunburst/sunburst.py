@@ -15,14 +15,16 @@ def generate_diagrams(data, shape_canvas, text_canvas, settings, path):
     diagrams = {}
     for entry in data:
         name = entry[0]
-        origin = (entry[1])
+        origin = entry[1]
+        data_source = entry[2]
         print(origin)
         diagrams[name] = Sunburst(shape_canvas,
                                   text_canvas,
                                   settings,
                                   path,
                                   name,
-                                  origin)
+                                  origin,
+                                  data_source)
         diagrams[name].draw()
         stop_trace()
     return diagrams
@@ -104,7 +106,8 @@ class Sunburst(object):
                  settings,
                  source,
                  name,
-                 origin):
+                 origin,
+                 data_source):
 
         self.shape_canvas = shape_canvas
         self.text_canvas = text_canvas
@@ -122,6 +125,8 @@ class Sunburst(object):
         self.origin = origin
         self.origin_x = origin[0]
         self.origin_y = origin[1]
+
+        self.data_source = data_source
 
     def import_settings(self):
         """import settings in the config file and assign them"""
@@ -150,7 +155,11 @@ class Sunburst(object):
         self.import_settings()
         words = None
         code_parse = CodeParser(self.source, self.alphabet, self.numbers)
-        words = code_parse.parse()
+        if self.data_source[0] == 'raw':
+            words = code_parse.parse()
+        elif self.data_source[0] == 'trace':
+            print(self.data_source[1])
+            words = code_parse.parse_trace(self.data_source[1])
         # find how big the bounding box needs to be
         max_len = 0
         for word in words:

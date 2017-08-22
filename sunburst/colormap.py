@@ -1,20 +1,16 @@
 """A mapping of letters to colours"""
 from pyx import color
 
-ALPHABET = "abcdefghijklmnopqrstuvwxyz"
-NUMBERS = "0123456789"
 
-def sector_color_map(ALPHABET):
-    incr = 1.0/(len(ALPHABET)+2)
+def color_map(alpha, nums):
+    """returns a dict of which color a character maps to"""
+    incr = 1.0/(len(alpha)+5)
     mapping = {}
-    init = 1.0 - 0.5*(1.0-(len(ALPHABET)*incr))
-    for letter in ALPHABET:
+    init = len(alpha)*incr
+    for letter in alpha:
         mapping[letter] = color.rgb(init, init, init)
         init -= incr
-    for number in NUMBERS:
+    for number in nums:
         mapping[number] = color.rgb(0.5, 0.5, 0.5)
     mapping[''] = color.rgb.red
     return mapping
-
-
-COLOR_MAPPING = sector_color_map(ALPHABET)

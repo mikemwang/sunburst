@@ -3,7 +3,7 @@ each layer represents the letter at that index in the word"""
 
 from math import sin, cos, pi
 from pyx import path, style, color, text, trafo
-from .colormap import COLOR_MAPPING
+from .colormap import color_map
 from .code_parser import CodeParser
 
 
@@ -11,12 +11,42 @@ text.set(text.LatexRunner)  #'
 text.preamble(r"\usepackage{courier}")  #'
 
 
+def generate_diagrams(data, shape_canvas, text_canvas, settings, path):
+    diagrams = {}
+    for entry in data:
+        name = entry[0]
+        origin = (entry[1])
+        print(origin)
+        diagrams[name] = Sunburst(shape_canvas,
+                                  text_canvas,
+                                  settings,
+                                  path,
+                                  name,
+                                  origin)
+        diagrams[name].draw()
+        stop_trace()
+    return diagrams
+
+
+def stop_trace():
+    """a function that, when called, tells trace to stop tracing"""
+    pass
+
+
+def output(file_name, shape_canvas, text_canvas):
+    shape_canvas.insert(text_canvas)
+    shape_canvas.writePDFfile(file_name)  #'
+
+
 class TextLayer(object):
     """class to create all the text and format it appropriately"""
 
-    def __init__(self, canvas):
+    def __init__(self, canvas, origin, alphabet, numbers):
         self.canvas = canvas
         self.sectors = {}  # info from the sector
+        self.color_map = color_map(alphabet, numbers)
+        self.xo = origin[0]
+        self.yo = origin[1]
         # set the font
 
     def draw(self):
@@ -33,8 +63,8 @@ class TextLayer(object):
                     radius += .2
                 else:
                     radius = original_radius
-                centroid_x = radius*cos(radian)
-                centroid_y = radius*sin(radian)
+                centroid_x = radius*cos(radian)+self.xo
+                centroid_y = radius*sin(radian)+self.yo
                 letter = self.sectors[layer]['letters'][radian]
                 # rotate the text accordingly
                 transform = trafo.rotate(radian*180/pi)
@@ -71,15 +101,27 @@ class Sunburst(object):
     def __init__(self,
                  shape_canvas,
                  text_canvas,
-                 settings):
+                 settings,
+                 source,
+                 name,
+                 origin):
 
         self.shape_canvas = shape_canvas
         self.text_canvas = text_canvas
         # data properties
-        self.text_object = TextLayer(self.text_canvas)
+        self.text_object = None
+        self.alphabet = None
+        self.numbers = None
+        self.color_map = None
         self.settings = settings  # to be parsed later
         self.data = None  # from the settings file
         self.layer = None  # from the settings file
+        self.source = source
+
+        self.name = name
+        self.origin = origin
+        self.origin_x = origin[0]
+        self.origin_y = origin[1]
 
     def import_settings(self):
         """import settings in the config file and assign them"""
@@ -87,13 +129,19 @@ class Sunburst(object):
         # open the config file for parsing
         self.data = self.settings['data']
         self.layer = self.settings['layer']
+        self.alphabet = self.data['alphabet']
+        self.numbers = self.data['numbers']
+        self.text_object = TextLayer(self.text_canvas, self.origin, self.alphabet,
+                                     self.numbers)
+        self.color_map = color_map(self.alphabet, self.numbers)
 
     def extents(self, layers):
         """draw bounding box so the file is the right size and shape"""
         # +2 for some boarder padding
         box_length = (layers+2)*self.layer['layer_width']
-        self.shape_canvas.fill(path.rect(-box_length, -box_length,
-                                         2*box_length, 2*box_length),
+        self.shape_canvas.stroke(path.rect(self.origin_x-box_length,
+                                           self.origin_y-box_length,
+                                           2*box_length, 2*box_length),
                                [color.rgb.white])
 
     def draw(self):
@@ -101,7 +149,7 @@ class Sunburst(object):
         # get the settings from the config file
         self.import_settings()
         words = None
-        code_parse = CodeParser('/users/mikewang/desktop/sunburst/sunburst/sunburst.py')
+        code_parse = CodeParser(self.source, self.alphabet, self.numbers)
         words = code_parse.parse()
         # find how big the bounding box needs to be
         max_len = 0
@@ -163,48 +211,42 @@ class Sector(object):
 
         self.path = path
 
+        self.xo = self.sunburst.origin_x
+        self.yo = self.sunburst.origin_y
+
         if self.level > 0:
-            self.sector_color = COLOR_MAPPING[self.letter]
+            self.sector_color = self.sunburst.color_map[self.letter]
         else:
             self.sector_color = color.rgb.white
 
     def draw_sector(self, end):
         """draw the sector"""
-
-        if end:
-            # to account for rounding errors, make the sectors slightly larger
-            segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
-                                         self.end_angle),
-                                path.arcn(0, 0,
-                                          self.sector_width+self.inner_r,
-                                          self.end_angle, self.start_angle),
-                                path.closepath())
-            self.shape_canvas.fill(segment, [self.sector_color])
-        else:
-            segment = path.path(path.arc(0, 0, self.inner_r, self.start_angle,
-                                         self.end_angle),
-                                path.arcn(0, 0,
-                                          self.sector_width+self.inner_r,
-                                          self.end_angle, self.start_angle),
-                                path.closepath())
-            self.shape_canvas.fill(segment, [self.sector_color])
+        print(self.xo,self.yo)
+        segment = path.path(path.arc(self.xo, self.yo,
+                                     self.inner_r,
+                                     self.start_angle, self.end_angle),
+                            path.arcn(self.xo, self.yo,
+                                      self.sector_width+self.inner_r,
+                                      self.end_angle, self.start_angle),
+                            path.closepath())
+        self.shape_canvas.fill(segment, [self.sector_color])
 
         # draw a delimiting line between sectors
         r = self.inner_r + self.sector_width
         start_radians = self.start_angle*pi/180.0
         end_radians = self.end_angle*pi/180.0
-        x0 = self.inner_r*cos(start_radians)
-        y0 = self.inner_r*sin(start_radians)
-        x1 = r*cos(start_radians)
-        y1 = r*sin(start_radians)
+        x0 = self.inner_r*cos(start_radians)+self.xo
+        y0 = self.inner_r*sin(start_radians)+self.yo
+        x1 = r*cos(start_radians)+self.xo
+        y1 = r*sin(start_radians)+self.yo
 
         self.shape_canvas.stroke(path.line(x0, y0, x1, y1),
                 [style.linewidth(0.01), color.gray(0.15)])
 
-        x0 = self.inner_r*cos(end_radians)
-        y0 = self.inner_r*sin(end_radians)
-        x1 = r*cos(end_radians)
-        y1 = r*sin(end_radians)
+        x0 = self.inner_r*cos(end_radians)+self.xo
+        y0 = self.inner_r*sin(end_radians)+self.yo
+        x1 = r*cos(end_radians)+self.xo
+        y1 = r*sin(end_radians)+self.yo
 
         self.shape_canvas.stroke(path.line(x0, y0, x1, y1),
                 [style.linewidth(0.01), color.gray(0.15)])
@@ -234,19 +276,19 @@ class Sector(object):
             self.draw_sector(False)
 
         # draw the bezier
-        x0 = (self.inner_r+0.05)*cos(self.centroid_radians)
-        y0 = (self.inner_r+0.05)*sin(self.centroid_radians)
+        x0 = (self.inner_r+0.05)*cos(self.centroid_radians)+self.xo
+        y0 = (self.inner_r+0.05)*sin(self.centroid_radians)+self.yo
 
         r = self.parent_outer_radius
-        x1 = r*cos(self.centroid_radians)
-        y1 = r*sin(self.centroid_radians)
+        x1 = r*cos(self.centroid_radians)+self.xo
+        y1 = r*sin(self.centroid_radians)+self.yo
 
         r = self.inner_r
-        x2 = r*cos(self.parent_centroid_radian)
-        y2 = r*sin(self.parent_centroid_radian)
+        x2 = r*cos(self.parent_centroid_radian)+self.xo
+        y2 = r*sin(self.parent_centroid_radian)+self.yo
 
-        x3 = self.parent_outer_radius*cos(self.parent_centroid_radian)
-        y3 = self.parent_outer_radius*sin(self.parent_centroid_radian)
+        x3 = self.parent_outer_radius*cos(self.parent_centroid_radian)+self.xo
+        y3 = self.parent_outer_radius*sin(self.parent_centroid_radian)+self.yo
 
         self.shape_canvas.stroke(path.curve(x0, y0, x1, y1, x2, y2, x3, y3),
                                  [style.linewidth(0.035), self.sector_color])
@@ -271,7 +313,7 @@ class Sector(object):
             if not word:
                 # if word is an empty string, continue
                 child_sector_lists[word] = {'freq': freq,
-                                              'words': {}}
+                                            'words': {}}
                 continue
             letter = word[0]
             if letter not in child_sector_lists.keys():

@@ -1,27 +1,32 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import trace
 import sys
 import os
 
 from pyx import canvas
 import yaml
-from sunburst.sunburst import Sunburst
+import sunburst
+
 
 def main():
+    # set up the line tracing function
+    tracer = sunburst.Trace(os.path.dirname(os.path.abspath(sunburst.__file__)),
+                            sunburst.generate_diagrams, sunburst.stop_trace)
+    #sys.settrace(tracer.trace)
+    # where is the sunburst directory?
+    path = os.path.dirname(os.path.abspath(sunburst.__file__))
+    # instantiate canvases
     shape_canvas = canvas.canvas()
     text_canvas = canvas.canvas()
+    # read in settings
     settings = yaml.load(open('config.yaml', 'r'))
-    sunburst = Sunburst(shape_canvas, text_canvas, settings)
-    sunburst.draw()
-    shape_canvas.insert(text_canvas)
-    shape_canvas.writePDFfile(settings['output']['name'])  #'
+    # list of diagrams to create
+    data = [('test', (0, 0)), ('test2', (180, 0))]
+    sunburst.generate_diagrams(data, shape_canvas, text_canvas, settings,
+                               path)
+    sunburst.output(settings['output']['name'], shape_canvas, text_canvas)
+    print(tracer.traced)
 
-tracer = trace.Trace(
-    ignoredirs=[sys.prefix, sys.exec_prefix],
-    trace=1,
-    count=0)
-tracer.run(main.__code__)
-r = tracer.results()
-r.write_results(show_missing=True,
-                coverdir=os.path.dirname(os.path.abspath(__file__)+'/code_metadata'))
+
+if __name__ == '__main__':
+    main()

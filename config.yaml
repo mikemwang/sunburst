@@ -9,4 +9,7 @@ layer:
 
 data:
         max_recursion: 18
+        # list the valid characters
+        alphabet: 'abcdefghijklmnopqrstuvwxyz'
+        numbers: '0123456789'
 ...

@@ -1,27 +1,33 @@
 """python file to create a sunburst diagram using most used words in English,
 each layer represents the letter at that index in the word"""
 
-from math import sin, cos, pi
-from pyx import path, style, color, text, trafo
+from math import sin, cos, pi  #'
+from pyx import path, style, color, text, trafo  #'
 from .colormap import color_map
-from .code_parser import CodeParser
+from .code_parser import parse_source, parse_trace
 
 
 text.set(text.LatexRunner)  #'
 text.preamble(r"\usepackage{courier}")  #'
 
 
-def generate_diagrams(data, shape_canvas, text_canvas, settings, path):
+def generate_diagrams(data, shape_canvas, text_canvas, settings, source_path):
     diagrams = {}
+    # draw bounding box so the file is the right size and shape
+    x = settings['output']['x']
+    y = settings['output']['y']
+
+    # draw the bounding box
+    shape_canvas.stroke(path.rect(-0.25*x, -0.5*y, x, y),
+                        [color.rgb.white, style.linewidth(0.001)])
     for entry in data:
         name = entry[0]
         origin = entry[1]
         data_source = entry[2]
-        print(origin)
         diagrams[name] = Sunburst(shape_canvas,
                                   text_canvas,
                                   settings,
-                                  path,
+                                  source_path,
                                   name,
                                   origin,
                                   data_source)
@@ -61,26 +67,32 @@ class TextLayer(object):
             prev_radian = 0
             for radian in self.sectors[layer]['letters']:
                 # check if the sector is too small
-                if (radian-prev_radian)*original_radius < 0.2:
+                if (radian-prev_radian)*original_radius < 0.1:
                     radius += .2
                 else:
                     radius = original_radius
                 centroid_x = radius*cos(radian)+self.xo
                 centroid_y = radius*sin(radian)+self.yo
-                letter = self.sectors[layer]['letters'][radian]
+                letter = self.sectors[layer]['letters'][radian][0]
+                freq = self.sectors[layer]['letters'][radian][1]
+
                 # rotate the text accordingly
                 transform = trafo.rotate(radian*180/pi)
 
                 if radian > pi/2 and radian < (3*pi/2):
                     transform = trafo.rotate(180+radian*180/pi)
 
+                if len(letter) > 1:
+                    letter += ' '
+                    letter += str(freq)
+
                 self.canvas.text(centroid_x, centroid_y,
                                  r"\texttt{"+letter+'}',
                                  [text.halign.center, text.valign.middle,
-                                  transform])
+                                  transform, text.size.scriptsize])
                 prev_radian = radian
 
-    def update(self, layer, letter, centroid):
+    def update(self, layer, letter, centroid, letter_freq):
         """sectors will call this to update the text info
 
         layer: the layer number of the sector
@@ -91,9 +103,9 @@ class TextLayer(object):
         if layer not in self.sectors.keys():
             self.sectors[layer] = {'radius': centroid[1],
                                    'letters':
-                                       {centroid[0]: letter}}
+                                       {centroid[0]: (letter, letter_freq)}}
         else:
-            self.sectors[layer]['letters'][centroid[0]] = letter
+            self.sectors[layer]['letters'][centroid[0]] = (letter, letter_freq)
 
 
 class Sunburst(object):
@@ -140,34 +152,21 @@ class Sunburst(object):
                                      self.numbers)
         self.color_map = color_map(self.alphabet, self.numbers)
 
-    def extents(self, layers):
-        """draw bounding box so the file is the right size and shape"""
-        # +2 for some boarder padding
-        box_length = (layers+2)*self.layer['layer_width']
-        self.shape_canvas.stroke(path.rect(self.origin_x-box_length,
-                                           self.origin_y-box_length,
-                                           2*box_length, 2*box_length),
-                               [color.rgb.white])
 
     def draw(self):
         """begin calculating the diagram"""
         # get the settings from the config file
         self.import_settings()
         words = None
-        code_parse = CodeParser(self.source, self.alphabet, self.numbers)
         if self.data_source[0] == 'raw':
-            words = code_parse.parse()
+            words = parse_source(self.source, self.alphabet, self.numbers)
         elif self.data_source[0] == 'trace':
-            print(self.data_source[1])
-            words = code_parse.parse_trace(self.data_source[1])
+            words = parse_trace(self.data_source[1], self.alphabet, self.numbers)
         # find how big the bounding box needs to be
         max_len = 0
         for word in words:
             if len(word) > max_len:
                 max_len = len(word)
-
-        # draw the bounding box
-        self.extents(max_len)
         # instantiate the very first layer
         origin = Sector(self, words)
         # recursively draw all other layers
@@ -187,6 +186,7 @@ class Sector(object):
                  letter='ORIGIN',
                  start_percent=0,  # decimal 0-1
                  end_percent=1,  # decimal 0-1
+                 freq=0,
                  inner_r=0,
                  parent_angle=0,  # degrees
                  parent_arc=360,  # degrees
@@ -219,6 +219,7 @@ class Sector(object):
         self.centroid_radians = 0.5*(self.end_angle+self.start_angle)*pi/180.0
 
         self.path = path
+        self.freq = freq
 
         self.xo = self.sunburst.origin_x
         self.yo = self.sunburst.origin_y
@@ -226,11 +227,10 @@ class Sector(object):
         if self.level > 0:
             self.sector_color = self.sunburst.color_map[self.letter]
         else:
-            self.sector_color = color.rgb.white
+            self.sector_color = color.rgb.black
 
     def draw_sector(self, end):
         """draw the sector"""
-        print(self.xo,self.yo)
         segment = path.path(path.arc(self.xo, self.yo,
                                      self.inner_r,
                                      self.start_angle, self.end_angle),
@@ -241,6 +241,10 @@ class Sector(object):
         self.shape_canvas.fill(segment, [self.sector_color])
 
         # draw a delimiting line between sectors
+        line_color = color.gray(0.15)
+        if end and (self.end_angle - self.start_angle) < 0.25:
+            line_color = color.rgb.red
+
         r = self.inner_r + self.sector_width
         start_radians = self.start_angle*pi/180.0
         end_radians = self.end_angle*pi/180.0
@@ -250,15 +254,16 @@ class Sector(object):
         y1 = r*sin(start_radians)+self.yo
 
         self.shape_canvas.stroke(path.line(x0, y0, x1, y1),
-                [style.linewidth(0.01), color.gray(0.15)])
+                [style.linewidth(0.01), line_color])
 
         x0 = self.inner_r*cos(end_radians)+self.xo
         y0 = self.inner_r*sin(end_radians)+self.yo
         x1 = r*cos(end_radians)+self.xo
         y1 = r*sin(end_radians)+self.yo
 
+
         self.shape_canvas.stroke(path.line(x0, y0, x1, y1),
-                [style.linewidth(0.01), color.gray(0.15)])
+                [style.linewidth(0.01), line_color])
 
     def display(self):
         """method to display the sector"""
@@ -272,17 +277,23 @@ class Sector(object):
             self.sunburst.text_object.update(self.level, self.path[6:],
                                              (self.centroid_radians,
                                               self.inner_r +
-                                              0.5*self.sector_width))
+                                              0.5*self.sector_width),
+                                             self.freq)
         else:
             self.sunburst.text_object.update(self.level, self.letter,
                                              (self.centroid_radians,
                                               self.inner_r +
-                                              0.5*self.sector_width))
+                                              0.5*self.sector_width),
+                                             self.freq)
 
         if self.letter == '':
             self.draw_sector(True)
         else:
             self.draw_sector(False)
+
+        if self.level == 1:
+            # don't draw lines to nothing
+            return
 
         # draw the bezier
         x0 = (self.inner_r+0.05)*cos(self.centroid_radians)+self.xo
@@ -292,15 +303,18 @@ class Sector(object):
         x1 = r*cos(self.centroid_radians)+self.xo
         y1 = r*sin(self.centroid_radians)+self.yo
 
+        delta = 0.1*(self.centroid_radians - self.parent_centroid_radian)
+
         r = self.inner_r
-        x2 = r*cos(self.parent_centroid_radian)+self.xo
-        y2 = r*sin(self.parent_centroid_radian)+self.yo
+        x2 = r*cos(self.parent_centroid_radian+delta)+self.xo
+        y2 = r*sin(self.parent_centroid_radian+delta)+self.yo
 
-        x3 = self.parent_outer_radius*cos(self.parent_centroid_radian)+self.xo
-        y3 = self.parent_outer_radius*sin(self.parent_centroid_radian)+self.yo
+        x3 = self.parent_outer_radius*cos(self.parent_centroid_radian+delta)+self.xo
+        y3 = self.parent_outer_radius*sin(self.parent_centroid_radian+delta)+self.yo
 
+        sector_len = (self.end_angle - self.start_angle)*self.inner_r*pi/180.0
         self.shape_canvas.stroke(path.curve(x0, y0, x1, y1, x2, y2, x3, y3),
-                                 [style.linewidth(0.035), self.sector_color])
+                                 [style.linewidth(0.05*sector_len), self.sector_color])
 
     def create_child_segment_lists(self):
         """a method to create child segment lists. returns in the following
@@ -399,6 +413,7 @@ class Sector(object):
                                   child['letter'],
                                   cur_percent,
                                   cur_percent+percent,
+                                  child['freq'],
                                   self.inner_r + self.layer_width,
                                   self.start_angle,
                                   self.end_angle - self.start_angle,

@@ -2,10 +2,12 @@
 ---
 output:
         name: 'test'
+        xdelta: 105
+        x: 200
+        y: 111.76
 layer:
-        layer_width: 7
-        sector_width: 3
-        end_cap_width: 3
+        layer_width: 4.291
+        sector_width: 1.839
 
 data:
         max_recursion: 18

@@ -22,7 +22,7 @@ def main():
     settings = yaml.load(open('config.yaml', 'r'))
     # list of diagrams to create
     data = [('test', (0, 0), ('raw',)),
-            ('test2', (180, 0), ('trace', tracer.lines))]
+            ('test2', (settings['output']['xdelta'], 0), ('trace', tracer.lines))]
     sunburst.generate_diagrams(data, shape_canvas, text_canvas, settings,
                                path)
     sunburst.output(settings['output']['name'], shape_canvas, text_canvas)

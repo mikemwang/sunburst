@@ -3,7 +3,7 @@
 output:
         name: 'test'
         xdelta: 105
-        x: 200
+        x: 220
         y: 111.76
 layer:
         layer_width: 4.291

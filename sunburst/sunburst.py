@@ -8,7 +8,7 @@ from .code_parser import parse_source, parse_trace
 
 
 text.set(text.LatexRunner)  #'
-text.preamble(r"\usepackage{courier}")  #'
+text.preamble(r"\usepackage{cmtt}")  #'
 
 
 def generate_diagrams(data, shape_canvas, text_canvas, settings, source_path):
@@ -20,6 +20,9 @@ def generate_diagrams(data, shape_canvas, text_canvas, settings, source_path):
     # draw the bounding box
     shape_canvas.stroke(path.rect(-0.25*x, -0.5*y, x, y),
                         [color.rgb.white, style.linewidth(0.001)])
+    # draw black line at end so I know where to cut
+    shape_canvas.stroke(path.line(x, 0.5*y, x, -0.5*y),
+                        [color.rgb.black, style.linewidth(0.035)])
     for entry in data:
         name = entry[0]
         origin = entry[1]
@@ -49,12 +52,13 @@ def output(file_name, shape_canvas, text_canvas):
 class TextLayer(object):
     """class to create all the text and format it appropriately"""
 
-    def __init__(self, canvas, origin, alphabet, numbers):
+    def __init__(self, canvas, origin, color_map, sector_width):
         self.canvas = canvas
         self.sectors = {}  # info from the sector
-        self.color_map = color_map(alphabet, numbers)
         self.xo = origin[0]
         self.yo = origin[1]
+        self.color_map = color_map
+        self.sector_width = sector_width
         # set the font
 
     def draw(self):
@@ -62,35 +66,61 @@ class TextLayer(object):
 
         for layer in self.sectors:
             radius = self.sectors[layer]['radius']
-            original_radius = radius
+            letter_radius = radius + 0.25*self.sector_width
 
             prev_radian = 0
             for radian in self.sectors[layer]['letters']:
-                # check if the sector is too small
-                if (radian-prev_radian)*original_radius < 0.1:
-                    radius += .2
-                else:
-                    radius = original_radius
+                end = False
+                letter = self.sectors[layer]['letters'][radian][0]
+                if len(letter) > 1:
+                    end = True
+                freq = self.sectors[layer]['letters'][radian][1]
+
+                offset = False
+                cur_radian = radian
+
+                if (radian-prev_radian)*letter_radius < 0.15:
+                    cur_radian = prev_radian + 0.15/letter_radius
+                    prev_radian = cur_radian
+                    offset = True
+
                 centroid_x = radius*cos(radian)+self.xo
                 centroid_y = radius*sin(radian)+self.yo
-                letter = self.sectors[layer]['letters'][radian][0]
-                freq = self.sectors[layer]['letters'][radian][1]
+                if end:
+                    letter_x = radius*cos(cur_radian)+self.xo
+                    letter_y = radius*sin(cur_radian)+self.yo
+                else:
+                    letter_x = letter_radius*cos(cur_radian)+self.xo
+                    letter_y = letter_radius*sin(cur_radian)+self.yo
+
 
                 # rotate the text accordingly
                 transform = trafo.rotate(radian*180/pi)
 
-                if radian > pi/2 and radian < (3*pi/2):
+                if cur_radian > pi/2 and cur_radian < (3*pi/2):
                     transform = trafo.rotate(180+radian*180/pi)
 
+                # if this condition is true then the letter is actually the
+                # whole word, it is an end sector, so display the frequency
                 if len(letter) > 1:
                     letter += ' '
                     letter += str(freq)
 
-                self.canvas.text(centroid_x, centroid_y,
+                # the random floats are me tuning the color just right lol
+                text_color = color.rgb(0, 0.0784*1.4, 0.156*1.4)
+                self.canvas.text(letter_x, letter_y,
                                  r"\texttt{"+letter+'}',
                                  [text.halign.center, text.valign.middle,
-                                  transform, text.size.scriptsize])
-                prev_radian = radian
+                                  transform, text.size.scriptsize, text_color])
+                if offset:
+                    self.canvas.stroke(path.line(centroid_x, centroid_y,
+                                                 letter_x, letter_y),
+                                       [style.linewidth(0.0035), text_color]
+                                      )
+                self.canvas.fill(path.circle(centroid_x, centroid_y,
+                                 0.0065), [text_color])
+                prev_radian = cur_radian
+
 
     def update(self, layer, letter, centroid, letter_freq):
         """sectors will call this to update the text info
@@ -148,9 +178,9 @@ class Sunburst(object):
         self.layer = self.settings['layer']
         self.alphabet = self.data['alphabet']
         self.numbers = self.data['numbers']
-        self.text_object = TextLayer(self.text_canvas, self.origin, self.alphabet,
-                                     self.numbers)
         self.color_map = color_map(self.alphabet, self.numbers)
+        self.text_object = TextLayer(self.text_canvas, self.origin,
+                self.color_map, self.layer['sector_width'])
 
 
     def draw(self):

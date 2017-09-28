@@ -11,7 +11,7 @@ In this version the data set for the diagram on the left is the code from the Py
 
 Printed out and now hanging in my room!
 
-![alt-text](photo.png)
+![alt-text](photo.jpg)
 
 ToDos:
 - Refactor code for better efficency (had to get it out quickly while I still had access to a large scale printer)

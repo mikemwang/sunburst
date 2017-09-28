@@ -1,6 +1,6 @@
 # sunburst
 
-![alt-text](test1.png)
+![alt-text](test.png)
 
 The data in `wordlist` is formatted as a pair of 'word', frequency on every line, parsed by the
 sunburst function when read in. 

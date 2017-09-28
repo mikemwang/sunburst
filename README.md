@@ -9,6 +9,10 @@ A side project I started while at my internship with Tagup. I wrote some Python 
 
 In this version the data set for the diagram on the left is the code from the Python files used to generate that diagram. While running, the Python code records the lines that were executed, and this record is used as the data set for the diagram on the right. 
 
+Printed out and now hanging in my room!
+
+![alt-text](photo.png)
+
 ToDos:
 - Refactor code for better efficency (had to get it out quickly while I still had access to a large scale printer)
 - Put in comments soon before I froget why I did what I did

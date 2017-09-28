@@ -16,7 +16,10 @@ def parse_source(source_dir, alphabet, numbers):
             for item in PARSE:
                 data = item(data, alphabet, numbers)
             for entry in data:
-                clean_data[entry] = data[entry]
+                if entry in clean_data.keys():
+                    clean_data[entry] += data[entry]
+                else:
+                    clean_data[entry] = data[entry]
     return clean_data
 
 def parse_trace(trace_source, alphabet, numbers):

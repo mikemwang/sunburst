@@ -19,5 +19,5 @@ Still very unpolished, for now running run.py with Python3 (won't work with 2!) 
 
 # Todos
 - Refactor code for better efficency (had to get it out quickly while I still had access to a large scale printer)
-- Put in comments soon before I froget why I did what I did
+- Put in comments soon before I forget why I did what I did
 - Revamp the interface so that the code can work with other types of data, not just words
